@@ -1,4 +1,9 @@
-# from __future__ import division
+# Nick Ubels
+# https://github.com/nickubels/KV1-route-shapes
+# Generates a GeoJSON based on lines defined in Koppelvlak 1 files
+# Run this script from within a directory containing the Koppelvlak 1 TMI files
+
+# Import all the modules we need
 import pandas as pd
 import geojson as gj
 import shapely.geometry as sh
@@ -7,26 +12,40 @@ import pyproj
 from multiprocessing import Process, Manager, Pool
 from functools import partial
 
+# Define a partial function for transforming from RD_New to WGS84 to comply with GeoJSON standards
 project = partial(
     pyproj.transform,
-    pyproj.Proj(init='epsg:28992'),
-    pyproj.Proj(init='epsg:4326'))
+    pyproj.Proj(init='epsg:28992'), #RD_new
+    pyproj.Proj(init='epsg:4326'))	#WGS84
 
+
+# Define the function that generates the shapes
 def make_shape(L,LinePlanningNumber):
+	# Extract a list with all Journey Patterns
 	journey_patterns = set(points_joined_segments[points_joined_segments['[LinePlanningNumber]'] == LinePlanningNumber]['[JourneyPatternCode]'])
+	# Create a subset of segments with this specific LinePlanningNumber
 	subset = points_joined_segments[(points_joined_segments['[LinePlanningNumber]'] == LinePlanningNumber)]
+	# Create an empty list to store the 
 	lines = []
 	for JourneyPatternCode in journey_patterns:
+		# Create a list with timing link numbers
 		timing_link = set(subset[(subset['[JourneyPatternCode]'] == JourneyPatternCode)]['[TimingLinkOrder]'])
+		# Create a subset with this specific JourneyPatternCode
 		subsubset = subset[(subset['[JourneyPatternCode]'] == JourneyPatternCode)]
 		for TimingLinkOrder in timing_link:
+			# Zip the points together to form a linestring
 			line_string = sh.LineString(zip(subsubset[(subsubset['[TimingLinkOrder]'] == TimingLinkOrder)]['[LocationX_EW]'].tolist(),subsubset[(subsubset['[TimingLinkOrder]'] == TimingLinkOrder)]['[LocationY_NS]'].tolist()))
+			# Check if the linestring does not already exist in the line
 			if not line_string in lines:
+				# If that is the case then append it
 				lines.append(line_string)
-
+	# Make a MultiLineString of the different parts
 	multi_line = sh.MultiLineString(lines)
+	# Preform a linemerge
 	merged = ops.linemerge(multi_line)
+	# Transform from RD_new to WGS84
 	merged = ops.transform(project,merged)
+	# Append feature to List
 	L.append(gj.Feature(geometry=merged,properties={
 		"LinePlanningNumber": str(LinePlanningNumber),
 		"DataOwnerCode": str(points_joined_segments[points_joined_segments['[LinePlanningNumber]'] == LinePlanningNumber]['[DataOwnerCode]'].iloc[0]),
@@ -82,19 +101,25 @@ if __name__ == "__main__":
 
 	with Manager() as manager:
 		print("Step 3 out of 4: Generating the lines")
-		#Create a list to hold each route's shape to write them to file at the end:
+		# Create a list to hold each route's shape to write them to file at the end
 		line_shape_list = manager.list()
+		# Create the pool
 		pool = Pool(processes = None)
+		# Create the partial function for handling each line
 		func = partial(make_shape,line_shape_list)
+		# Calculate the amount of lines for displaying progress
 		no_lines = len(points_joined_segments['[LinePlanningNumber]'].unique())
+		# Execute calculations for each line and print status
 		for i, _ in enumerate(pool.imap_unordered(func, points_joined_segments['[LinePlanningNumber]'].unique(), 1)):
 			print("	" + str(i+1) + " of " + str(no_lines) + " lines processed",end="\r")
+		print("")
+		# End processing
 		pool.close()
 		pool.join()
 
 		print("Step 4 out of 4: Writing lines to GeoJSON file")
-		#Finally, write our collection of Features (one for each route) to file in
-		#geoJSON format, as a FeatureCollection:
+		# Write our collection of Features (one for each route) to file in
+		# GeoJSON format, as a FeatureCollection:
 		with open('route_shapes.geojson', 'w') as outfile:
 			gj.dump(gj.FeatureCollection(line_shape_list._getvalue()), outfile)
 	print("Conversion of Koppelvlak 1 to GeoJSON finished")
