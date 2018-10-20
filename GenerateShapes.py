@@ -1,10 +1,16 @@
-from __future__ import division
+# from __future__ import division
 import pandas as pd
 import geojson as gj
 import shapely.geometry as sh
 import shapely.ops as ops
+import pyproj
 from multiprocessing import Process, Manager, Pool
 from functools import partial
+
+project = partial(
+    pyproj.transform,
+    pyproj.Proj(init='epsg:28992'),
+    pyproj.Proj(init='epsg:4326'))
 
 def make_shape(L,LinePlanningNumber):
 	journey_patterns = set(points_joined_segments[points_joined_segments['[LinePlanningNumber]'] == LinePlanningNumber]['[JourneyPatternCode]'])
@@ -20,7 +26,8 @@ def make_shape(L,LinePlanningNumber):
 
 	multi_line = sh.MultiLineString(lines)
 	merged = ops.linemerge(multi_line)
-	L.append(gj.Feature(geometry=multi_line,properties={
+	merged = ops.transform(project,merged)
+	L.append(gj.Feature(geometry=merged,properties={
 		"LinePlanningNumber": str(LinePlanningNumber),
 		"DataOwnerCode": str(points_joined_segments[points_joined_segments['[LinePlanningNumber]'] == LinePlanningNumber]['[DataOwnerCode]'].iloc[0]),
 		"LinePublicNumber": str(points_joined_segments[points_joined_segments['[LinePlanningNumber]'] == LinePlanningNumber]['[DisplayPublicLine]'].iloc[0]),
@@ -32,8 +39,17 @@ def make_shape(L,LinePlanningNumber):
 
 
 if __name__ == "__main__":
-	print("Start loading data")
-	segments = pd.read_csv('JOPATILIXX.TMI', sep='|',usecols=['[DataOwnerCode]','[LinePlanningNumber]','[JourneyPatternCode]','[TimingLinkOrder]','[UserStopCodeBegin]','[UserStopCodeEnd]','[DisplayPublicLine]','[ProductFormulaType]'])
+	print("Koppelvlak 1 to GeoJSON")
+	print("Step 1 out of x: Start loading data")
+
+	# Try to load the data containing the route segment data
+	try:
+		print("Attempting to load JOPATILIXX.TMI")
+		segments = pd.read_csv('JOPATILIXX.TMI', sep='|',usecols=['[DataOwnerCode]','[LinePlanningNumber]','[JourneyPatternCode]','[TimingLinkOrder]','[UserStopCodeBegin]','[UserStopCodeEnd]','[DisplayPublicLine]','[ProductFormulaType]'])
+		print("Loaded JOPATILIXX.TMI")
+	except FileNotFoundError:
+		print("Could not find JOPATILIXX.TMI")
+		exit()
 	pointsOnSegments = pd.read_csv('POOLXXXXXX.TMI', sep='|',usecols=['[UserStopCodeBegin]','[UserStopCodeEnd]','[PointCode]','[DistanceSinceStartOfLink]','[TransportType]'])
 	points = pd.read_csv('POINTXXXXX.TMI',sep='|',usecols=['[PointCode]','[LocationX_EW]','[LocationY_NS]'])
 	line_info = pd.read_csv('LINEXXXXXX.TMI',sep='|',usecols=['[LinePlanningNumber]','[LineName]','[LineColor]'])
@@ -52,6 +68,7 @@ if __name__ == "__main__":
 		no_lines = len(points_joined_segments['[LinePlanningNumber]'].unique())
 		for i, _ in enumerate(pool.imap_unordered(func, points_joined_segments['[LinePlanningNumber]'].unique(), 1)):
 			print(str(i+1) + " of " + str(no_lines) + " lines processed",end="\r")
+
 		pool.map(func, points_joined_segments['[LinePlanningNumber]'].unique(),1)
 		pool.close()
 		pool.join()
