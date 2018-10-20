@@ -112,6 +112,7 @@ if __name__ == "__main__":
 		# Execute calculations for each line and print status
 		for i, _ in enumerate(pool.imap_unordered(func, points_joined_segments['[LinePlanningNumber]'].unique(), 1)):
 			print("	" + str(i+1) + " of " + str(no_lines) + " lines processed",end="\r")
+		print("")
 		# End processing
 		pool.close()
 		pool.join()
