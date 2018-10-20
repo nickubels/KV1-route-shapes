@@ -44,15 +44,40 @@ if __name__ == "__main__":
 
 	# Try to load the data containing the route segment data
 	try:
-		print("Attempting to load JOPATILIXX.TMI")
+		print("	Attempting to load JOPATILIXX.TMI")
 		segments = pd.read_csv('JOPATILIXX.TMI', sep='|',usecols=['[DataOwnerCode]','[LinePlanningNumber]','[JourneyPatternCode]','[TimingLinkOrder]','[UserStopCodeBegin]','[UserStopCodeEnd]','[DisplayPublicLine]','[ProductFormulaType]'])
-		print("Loaded JOPATILIXX.TMI")
+		print("	Finished loading JOPATILIXX.TMI")
 	except FileNotFoundError:
-		print("Could not find JOPATILIXX.TMI")
+		print("Error: Could not find JOPATILIXX.TMI")
 		exit()
-	pointsOnSegments = pd.read_csv('POOLXXXXXX.TMI', sep='|',usecols=['[UserStopCodeBegin]','[UserStopCodeEnd]','[PointCode]','[DistanceSinceStartOfLink]','[TransportType]'])
-	points = pd.read_csv('POINTXXXXX.TMI',sep='|',usecols=['[PointCode]','[LocationX_EW]','[LocationY_NS]'])
-	line_info = pd.read_csv('LINEXXXXXX.TMI',sep='|',usecols=['[LinePlanningNumber]','[LineName]','[LineColor]'])
+
+	# Try to load the data containing the points on these route segments
+	try:
+		print("	Attempting to load POOLXXXXXX.TMI")
+		pointsOnSegments = pd.read_csv('POOLXXXXXX.TMI', sep='|',usecols=['[UserStopCodeBegin]','[UserStopCodeEnd]','[PointCode]','[DistanceSinceStartOfLink]','[TransportType]'])
+		print("	Finished loading POOLXXXXXX.TMI")
+	except FileNotFoundError:
+		print("Error: Could not find POOLXXXXXX.TMI")
+		exit()
+
+	# Try to load the data containing the actual coordinates of the points
+	try:
+		print("	Attempting to load POINTXXXXX.TMI")
+		points = pd.read_csv('POINTXXXXX.TMI',sep='|',usecols=['[PointCode]','[LocationX_EW]','[LocationY_NS]'])
+		print("	Finished loading POINTXXXXX.TMI")
+	except FileNotFoundError:
+		print("Error: Could not find POINTXXXXX.TMI")
+		exit()
+
+	# Try to load extra data on the line
+	try:
+		print("	Attempting to load LINEXXXXXX.TMI")
+		line_info = pd.read_csv('LINEXXXXXX.TMI',sep='|',usecols=['[LinePlanningNumber]','[LineName]','[LineColor]'])
+		print("	Finished loading LINEXXXXXX.TMI")
+	except FileNotFoundError:
+		print("Error: Could not find LINEXXXXXX.TMI")
+		exit()
+
 	print("Finished loading data")
 
 	print("Joining the point on links on the segments")
