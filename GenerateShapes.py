@@ -36,32 +36,32 @@ def load_data(path):
         segments = pd.read_csv(os.path.join(path,'JOPATILIXX.TMI'), sep='|',usecols=['[DataOwnerCode]','[LinePlanningNumber]','[JourneyPatternCode]','[TimingLinkOrder]','[UserStopCodeBegin]','[UserStopCodeEnd]','[DisplayPublicLine]','[ProductFormulaType]'])
         print(" Finished loading JOPATILIXX.TMI")
     except FileNotFoundError:
-        print("Error: Could not find JOPATILIXX.TMI")
-        exit()
+        raise Exception("Could not find JOPATILIXX.TMI")
+        # exit()
     # Try to load the data containing the points on these route segments
     try:
         print(" Attempting to load POOLXXXXXX.TMI")
         pointsOnSegments = pd.read_csv(os.path.join(path,'POOLXXXXXX.TMI'), sep='|',usecols=['[UserStopCodeBegin]','[UserStopCodeEnd]','[PointCode]','[DistanceSinceStartOfLink]','[TransportType]'])
         print(" Finished loading POOLXXXXXX.TMI")
     except FileNotFoundError:
-        print("Error: Could not find POOLXXXXXX.TMI")
-        exit()
+        raise Exception("Could not find POOLXXXXXX.TMI")
+        # exit()
     # Try to load the data containing the actual coordinates of the points
     try:
         print(" Attempting to load POINTXXXXX.TMI")
         points = pd.read_csv(os.path.join(path,'POINTXXXXX.TMI'),sep='|',usecols=['[PointCode]','[LocationX_EW]','[LocationY_NS]'])
         print(" Finished loading POINTXXXXX.TMI")
     except FileNotFoundError:
-        print("Error: Could not find POINTXXXXX.TMI")
-        exit()
+        raise Exception("Could not find POINTXXXXX.TMI")
+        # exit()
     # Try to load extra data on the line
     try:
         print(" Attempting to load LINEXXXXXX.TMI")
         line_info = pd.read_csv(os.path.join(path,'LINEXXXXXX.TMI'),sep='|',usecols=['[LinePlanningNumber]','[LineName]','[LineColor]'])
         print(" Finished loading LINEXXXXXX.TMI")
     except FileNotFoundError:
-        print("Error: Could not find LINEXXXXXX.TMI")
-        exit()
+        raise Exception("Could not find LINEXXXXXX.TMI")
+        # exit()
 
     print("Step 2 out of 3: Joining data together")
     print(" Joining the points on the segments to the segments")
@@ -109,20 +109,23 @@ def make_shape(LinePlanningNumber,L,info,segments):
         }))
 
 def handle_agency(data_list,path):
-    info,segments = load_data(path)
-    # Create the pool
-    pool = Pool(processes = None)
-    # Create the partial function for handling each line
-    func = partial(make_shape,L=data_list,info=info,segments=segments)
-    # Calculate the amount of lines for displaying progress
-    no_lines = len(segments['[LinePlanningNumber]'].unique())
-    # Execute calculations for each line and print status
-    for i, _ in enumerate(pool.imap_unordered(func, segments['[LinePlanningNumber]'].unique(), 1)):
-        print(" " + str(i+1) + " of " + str(no_lines) + " lines processed",end="\r")
-    print("")
-    # End processing
-    pool.close()
-    pool.join()
+    try:
+        info,segments = load_data(path)
+        # Create the pool
+        pool = Pool(processes = None)
+        # Create the partial function for handling each line
+        func = partial(make_shape,L=data_list,info=info,segments=segments)
+        # Calculate the amount of lines for displaying progress
+        no_lines = len(segments['[LinePlanningNumber]'].unique())
+        # Execute calculations for each line and print status
+        for i, _ in enumerate(pool.imap_unordered(func, segments['[LinePlanningNumber]'].unique(), 1)):
+            print(" " + str(i+1) + " of " + str(no_lines) + " lines processed",end="\r")
+        print("")
+        # End processing
+        pool.close()
+        pool.join()
+    except Exception as e:
+        print("Something went wrong: " + str(e))
 
 if __name__ == "__main__": 
     args = get_args()
@@ -131,7 +134,11 @@ if __name__ == "__main__":
         line_shape_list = manager.list()
 
         if args.multiple:
-            pass
+            subfolders = [x[0] for x in os.walk(args.path)]
+            for folder in subfolders:
+                if folder is not args.path:
+                    print("KV1 folder in " + folder)
+                    handle_agency(line_shape_list, folder)
         else:
             print("KV1 folder in " + args.path)
             handle_agency(line_shape_list, args.path)    
