@@ -108,11 +108,8 @@ def make_shape(LinePlanningNumber,L,info,segments):
         "LineColor": str(info[info['[LinePlanningNumber]'] == LinePlanningNumber]['[LineColor]'].iloc[0])
         }))
 
-def unpacker(args):
-    return make_shape(*args)
-
-def handle_agency(data_list,args):
-    info,segments = load_data(args.path)
+def handle_agency(data_list,path):
+    info,segments = load_data(path)
     # Create the pool
     pool = Pool(processes = None)
     # Create the partial function for handling each line
@@ -137,7 +134,7 @@ if __name__ == "__main__":
             pass
         else:
             print("KV1 folder in " + args.path)
-            handle_agency(line_shape_list, args)    
+            handle_agency(line_shape_list, args.path)    
 
         print("Writing lines to GeoJSON file")
         # Write our collection of Features (one for each route) to file in
