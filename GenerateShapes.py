@@ -9,8 +9,18 @@ import geojson as gj
 import shapely.geometry as sh
 import shapely.ops as ops
 import pyproj
+import argparse
+import os
 from multiprocessing import Process, Manager, Pool
 from functools import partial
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description='Koppelvlak 1 to GeoJSON\nhttps://github.com/nickubels/KV1-route-shapes')
+    parser.add_argument('--path', '-p',metavar='FOLDER',help="Specify the path in which the files or subfolders are stored",required=True)
+    parser.add_argument('--output', '-o',metavar='FOLDER',help="Specify the path where the GeoJSON should be stored (Default: working directory)",default='')
+    parser.add_argument('--multiple','-m',action='store_true', default=False, help="Wether multiple KV1 folders should be read (Default: False)")
+    return parser.parse_args()
 
 # Define a partial function for transforming from RD_New to WGS84 to comply with GeoJSON standards
 project = partial(
@@ -18,13 +28,55 @@ project = partial(
     pyproj.Proj(init='epsg:28992'), #RD_new
     pyproj.Proj(init='epsg:4326'))  #WGS84
 
+def load_data(path):
+    print("Step 1 out of 3: Start loading data")
+    # Try to load the data containing the route segment data
+    try:
+        print(" Attempting to load JOPATILIXX.TMI")
+        segments = pd.read_csv(os.path.join(path,'JOPATILIXX.TMI'), sep='|',usecols=['[DataOwnerCode]','[LinePlanningNumber]','[JourneyPatternCode]','[TimingLinkOrder]','[UserStopCodeBegin]','[UserStopCodeEnd]','[DisplayPublicLine]','[ProductFormulaType]'])
+        print(" Finished loading JOPATILIXX.TMI")
+    except FileNotFoundError:
+        print("Error: Could not find JOPATILIXX.TMI")
+        exit()
+    # Try to load the data containing the points on these route segments
+    try:
+        print(" Attempting to load POOLXXXXXX.TMI")
+        pointsOnSegments = pd.read_csv(os.path.join(path,'POOLXXXXXX.TMI'), sep='|',usecols=['[UserStopCodeBegin]','[UserStopCodeEnd]','[PointCode]','[DistanceSinceStartOfLink]','[TransportType]'])
+        print(" Finished loading POOLXXXXXX.TMI")
+    except FileNotFoundError:
+        print("Error: Could not find POOLXXXXXX.TMI")
+        exit()
+    # Try to load the data containing the actual coordinates of the points
+    try:
+        print(" Attempting to load POINTXXXXX.TMI")
+        points = pd.read_csv(os.path.join(path,'POINTXXXXX.TMI'),sep='|',usecols=['[PointCode]','[LocationX_EW]','[LocationY_NS]'])
+        print(" Finished loading POINTXXXXX.TMI")
+    except FileNotFoundError:
+        print("Error: Could not find POINTXXXXX.TMI")
+        exit()
+    # Try to load extra data on the line
+    try:
+        print(" Attempting to load LINEXXXXXX.TMI")
+        line_info = pd.read_csv(os.path.join(path,'LINEXXXXXX.TMI'),sep='|',usecols=['[LinePlanningNumber]','[LineName]','[LineColor]'])
+        print(" Finished loading LINEXXXXXX.TMI")
+    except FileNotFoundError:
+        print("Error: Could not find LINEXXXXXX.TMI")
+        exit()
+
+    print("Step 2 out of 3: Joining data together")
+    print(" Joining the points on the segments to the segments")
+    joined_segments = pd.merge(segments, pointsOnSegments, how="inner", on=['[UserStopCodeBegin]','[UserStopCodeEnd]'])
+    print(" Joining the coordinates to those points")
+    points_joined_segments = pd.merge(joined_segments,points,how="inner",on='[PointCode]')
+
+    return (line_info,points_joined_segments)
 
 # Define the function that generates the shapes
-def make_shape(L,LinePlanningNumber):
+def make_shape(LinePlanningNumber,L,info,segments):
     # Extract a list with all Journey Patterns
-    journey_patterns = set(points_joined_segments[points_joined_segments['[LinePlanningNumber]'] == LinePlanningNumber]['[JourneyPatternCode]'])
+    journey_patterns = set(segments[segments['[LinePlanningNumber]'] == LinePlanningNumber]['[JourneyPatternCode]'])
     # Create a subset of segments with this specific LinePlanningNumber
-    subset = points_joined_segments[(points_joined_segments['[LinePlanningNumber]'] == LinePlanningNumber)]
+    subset = segments[(segments['[LinePlanningNumber]'] == LinePlanningNumber)]
     # Create an empty list to store the 
     lines = []
     for JourneyPatternCode in journey_patterns:
@@ -48,78 +100,48 @@ def make_shape(L,LinePlanningNumber):
     # Append feature to List
     L.append(gj.Feature(geometry=merged,properties={
         "LinePlanningNumber": str(LinePlanningNumber),
-        "DataOwnerCode": str(points_joined_segments[points_joined_segments['[LinePlanningNumber]'] == LinePlanningNumber]['[DataOwnerCode]'].iloc[0]),
-        "LinePublicNumber": str(points_joined_segments[points_joined_segments['[LinePlanningNumber]'] == LinePlanningNumber]['[DisplayPublicLine]'].iloc[0]),
-        "ProductFormulaType": str(points_joined_segments[points_joined_segments['[LinePlanningNumber]'] == LinePlanningNumber]['[ProductFormulaType]'].iloc[0]),
-        "TransportType": str(points_joined_segments[points_joined_segments['[LinePlanningNumber]'] == LinePlanningNumber]['[TransportType]'].iloc[0]),
-        "LineName": str(line_info[line_info['[LinePlanningNumber]'] == LinePlanningNumber]['[LineName]'].iloc[0]),
-        "LineColor": str(line_info[line_info['[LinePlanningNumber]'] == LinePlanningNumber]['[LineColor]'].iloc[0])
+        "DataOwnerCode": str(segments[segments['[LinePlanningNumber]'] == LinePlanningNumber]['[DataOwnerCode]'].iloc[0]),
+        "LinePublicNumber": str(segments[segments['[LinePlanningNumber]'] == LinePlanningNumber]['[DisplayPublicLine]'].iloc[0]),
+        "ProductFormulaType": str(segments[segments['[LinePlanningNumber]'] == LinePlanningNumber]['[ProductFormulaType]'].iloc[0]),
+        "TransportType": str(segments[segments['[LinePlanningNumber]'] == LinePlanningNumber]['[TransportType]'].iloc[0]),
+        "LineName": str(info[info['[LinePlanningNumber]'] == LinePlanningNumber]['[LineName]'].iloc[0]),
+        "LineColor": str(info[info['[LinePlanningNumber]'] == LinePlanningNumber]['[LineColor]'].iloc[0])
         }))
 
+def unpacker(args):
+    return make_shape(*args)
 
-if __name__ == "__main__":
-    print("Koppelvlak 1 to GeoJSON\nhttps://github.com/nickubels/KV1-route-shapes")
-    print("Step 1 out of 4: Start loading data")
-    # Try to load the data containing the route segment data
-    try:
-        print(" Attempting to load JOPATILIXX.TMI")
-        segments = pd.read_csv('JOPATILIXX.TMI', sep='|',usecols=['[DataOwnerCode]','[LinePlanningNumber]','[JourneyPatternCode]','[TimingLinkOrder]','[UserStopCodeBegin]','[UserStopCodeEnd]','[DisplayPublicLine]','[ProductFormulaType]'])
-        print(" Finished loading JOPATILIXX.TMI")
-    except FileNotFoundError:
-        print("Error: Could not find JOPATILIXX.TMI")
-        exit()
-    # Try to load the data containing the points on these route segments
-    try:
-        print(" Attempting to load POOLXXXXXX.TMI")
-        pointsOnSegments = pd.read_csv('POOLXXXXXX.TMI', sep='|',usecols=['[UserStopCodeBegin]','[UserStopCodeEnd]','[PointCode]','[DistanceSinceStartOfLink]','[TransportType]'])
-        print(" Finished loading POOLXXXXXX.TMI")
-    except FileNotFoundError:
-        print("Error: Could not find POOLXXXXXX.TMI")
-        exit()
-    # Try to load the data containing the actual coordinates of the points
-    try:
-        print(" Attempting to load POINTXXXXX.TMI")
-        points = pd.read_csv('POINTXXXXX.TMI',sep='|',usecols=['[PointCode]','[LocationX_EW]','[LocationY_NS]'])
-        print(" Finished loading POINTXXXXX.TMI")
-    except FileNotFoundError:
-        print("Error: Could not find POINTXXXXX.TMI")
-        exit()
-    # Try to load extra data on the line
-    try:
-        print(" Attempting to load LINEXXXXXX.TMI")
-        line_info = pd.read_csv('LINEXXXXXX.TMI',sep='|',usecols=['[LinePlanningNumber]','[LineName]','[LineColor]'])
-        print(" Finished loading LINEXXXXXX.TMI")
-    except FileNotFoundError:
-        print("Error: Could not find LINEXXXXXX.TMI")
-        exit()
+def handle_agency(data_list,args):
+    info,segments = load_data(args.path)
+    # Create the pool
+    pool = Pool(processes = None)
+    # Create the partial function for handling each line
+    func = partial(make_shape,L=data_list,info=info,segments=segments)
+    # Calculate the amount of lines for displaying progress
+    no_lines = len(segments['[LinePlanningNumber]'].unique())
+    # Execute calculations for each line and print status
+    for i, _ in enumerate(pool.imap_unordered(func, segments['[LinePlanningNumber]'].unique(), 1)):
+        print(" " + str(i+1) + " of " + str(no_lines) + " lines processed",end="\r")
+    print("")
+    # End processing
+    pool.close()
+    pool.join()
 
-    print("Step 2 out of 4: Joining data together")
-    print(" Joining the points on the segments to the segments")
-    joined_segments = pd.merge(segments, pointsOnSegments, how="inner", on=['[UserStopCodeBegin]','[UserStopCodeEnd]'])
-    print(" Joining the coordinates to those points")
-    points_joined_segments = pd.merge(joined_segments,points,how="inner",on='[PointCode]')
+if __name__ == "__main__": 
+    args = get_args()
 
     with Manager() as manager:
-        print("Step 3 out of 4: Generating the lines")
-        # Create a list to hold each route's shape to write them to file at the end
         line_shape_list = manager.list()
-        # Create the pool
-        pool = Pool(processes = None)
-        # Create the partial function for handling each line
-        func = partial(make_shape,line_shape_list)
-        # Calculate the amount of lines for displaying progress
-        no_lines = len(points_joined_segments['[LinePlanningNumber]'].unique())
-        # Execute calculations for each line and print status
-        for i, _ in enumerate(pool.imap_unordered(func, points_joined_segments['[LinePlanningNumber]'].unique(), 1)):
-            print(" " + str(i+1) + " of " + str(no_lines) + " lines processed",end="\r")
-        print("")
-        # End processing
-        pool.close()
-        pool.join()
 
-        print("Step 4 out of 4: Writing lines to GeoJSON file")
+        if args.multiple:
+            pass
+        else:
+            print("KV1 folder in " + args.path)
+            handle_agency(line_shape_list, args)    
+
+        print("Writing lines to GeoJSON file")
         # Write our collection of Features (one for each route) to file in
         # GeoJSON format, as a FeatureCollection:
-        with open('route_shapes.geojson', 'w') as outfile:
+        with open(os.path.join(args.output,'route_shapes.geojson'), 'w') as outfile:
             gj.dump(gj.FeatureCollection(line_shape_list._getvalue()), outfile)
     print("Conversion of Koppelvlak 1 to GeoJSON finished")
