@@ -82,8 +82,8 @@ def make_shape(LinePlanningNumber,L,info,segments):
     for JourneyPatternCode in journey_patterns:
         # Create a list with timing link numbers
         timing_link = set(subset[(subset['[JourneyPatternCode]'] == JourneyPatternCode)]['[TimingLinkOrder]'])
-        # Create a subset with this specific JourneyPatternCode
-        subsubset = subset[(subset['[JourneyPatternCode]'] == JourneyPatternCode)]
+        # Create a subset with this specific JourneyPatternCode and make sure they are in the correct order
+        subsubset = subset[(subset['[JourneyPatternCode]'] == JourneyPatternCode)].sort_values('[DistanceSinceStartOfLink]')
         for TimingLinkOrder in timing_link:
             # Zip the points together to form a linestring
             line_string = sh.LineString(zip(subsubset[(subsubset['[TimingLinkOrder]'] == TimingLinkOrder)]['[LocationX_EW]'].tolist(),subsubset[(subsubset['[TimingLinkOrder]'] == TimingLinkOrder)]['[LocationY_NS]'].tolist()))
@@ -91,6 +91,7 @@ def make_shape(LinePlanningNumber,L,info,segments):
             if not line_string in lines:
                 # If that is the case then append it
                 lines.append(line_string)
+
     # Make a MultiLineString of the different parts
     multi_line = sh.MultiLineString(lines)
     # Preform a linemerge
