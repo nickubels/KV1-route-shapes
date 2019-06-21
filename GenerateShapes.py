@@ -73,6 +73,8 @@ def load_data(path):
 
 # Define the function that generates the shapes
 def make_shape(LinePlanningNumber,L,info,segments):
+    # if not LinePlanningNumber == 'M397':
+    #     return
     # Extract a list with all Journey Patterns
     journey_patterns = set(segments[segments['[LinePlanningNumber]'] == LinePlanningNumber]['[JourneyPatternCode]'])
     # Create a subset of segments with this specific LinePlanningNumber
@@ -81,21 +83,31 @@ def make_shape(LinePlanningNumber,L,info,segments):
     lines = []
     for JourneyPatternCode in journey_patterns:
         # Create a list with timing link numbers
-        timing_link = set(subset[(subset['[JourneyPatternCode]'] == JourneyPatternCode)]['[TimingLinkOrder]'])
+        timing_link = sorted(set(subset[(subset['[JourneyPatternCode]'] == JourneyPatternCode)]['[TimingLinkOrder]']))
+        print(timing_link)
         # Create a subset with this specific JourneyPatternCode and make sure they are in the correct order
         subsubset = subset[(subset['[JourneyPatternCode]'] == JourneyPatternCode)].sort_values('[DistanceSinceStartOfLink]')
+        #print(subsubset)
+        x_list = []
+        y_list = []
         for TimingLinkOrder in timing_link:
-            # Zip the points together to form a linestring
-            line_string = sh.LineString(zip(subsubset[(subsubset['[TimingLinkOrder]'] == TimingLinkOrder)]['[LocationX_EW]'].tolist(),subsubset[(subsubset['[TimingLinkOrder]'] == TimingLinkOrder)]['[LocationY_NS]'].tolist()))
-            # Check if the linestring does not already exist in the line
-            if not line_string in lines:
-                # If that is the case then append it
-                lines.append(line_string)
+            #print(subsubset[(subsubset['[TimingLinkOrder]'] == TimingLinkOrder)])
+            x_list = x_list + subsubset[(subsubset['[TimingLinkOrder]'] == TimingLinkOrder)]['[LocationX_EW]'].tolist()
+            y_list = y_list + subsubset[(subsubset['[TimingLinkOrder]'] == TimingLinkOrder)]['[LocationY_NS]'].tolist()
+            # # Zip the points together to form a linestring
+            # line_string = sh.LineString(zip(subsubset[(subsubset['[TimingLinkOrder]'] == TimingLinkOrder)]['[LocationX_EW]'].tolist(),subsubset[(subsubset['[TimingLinkOrder]'] == TimingLinkOrder)]['[LocationY_NS]'].tolist()))
+            # # Check if the linestring does not already exist in the line
+            # if not line_string in lines:
+            #     # If that is the case then append it
+            #     lines.append(line_string)
+        line_string = sh.LineString(zip(x_list,y_list))
+        lines.append(line_string)
 
     # Make a MultiLineString of the different parts
     multi_line = sh.MultiLineString(lines)
     # Preform a linemerge
-    merged = ops.linemerge(multi_line)
+    #merged = ops.linemerge(multi_line)
+    merged = multi_line
     # Transform from RD_new to WGS84
     merged = ops.transform(project,merged)
     # Append feature to List
