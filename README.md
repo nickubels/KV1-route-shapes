@@ -11,3 +11,6 @@ Run with `python3 GenrateShapes.py -p PATH` where `PATH` has to be the path to a
 ### Example output
 ![](example.png)
 ![](qgis.png)
+
+### Important note
+In general this script does not take overlapping line segments into account. This means that the output might be less optimised than you would like. The reason for this is that the exact structure of a KV1 differs a bit per agency, it is thus hard to optimise this. As I only used this script for static visualisations I have decided to not further optimise it (at this point)
